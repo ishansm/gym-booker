@@ -1,6 +1,8 @@
 // Import required modules
 const { Builder, By, until } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
+const fs = require('fs');
+const path = require('path');
 const dotenv = require('dotenv');
 
 // Load environment variables
@@ -235,18 +237,29 @@ function formatTimeForDisplay(time) {
 
 // Main function to book a slot
 async function bookSlot(booking) {
-  // Create a new Chrome driver
-  const options = new chrome.Options();
-  
-  // Uncomment the following line to run Chrome in headless mode
-  // options.addArguments('--headless');
-  
-  const driver = await new Builder()
-    .forBrowser('chrome')
-    .setChromeOptions(options)
-    .build();
+  let driver;
   
   try {
+    console.log(`Starting booking process for ${booking.facility} on ${booking.date} at ${booking.time}...`);
+    
+    // Configure Chrome options for headless operation
+    const options = new chrome.Options();
+    
+    // Check if running in GitHub Actions
+    if (process.env.GITHUB_ACTIONS) {
+      options.addArguments('--headless');
+      options.addArguments('--disable-gpu');
+      options.addArguments('--no-sandbox');
+      options.addArguments('--disable-dev-shm-usage');
+      options.addArguments('--window-size=1920,1080');
+    }
+    
+    // Initialize Chrome driver with options
+    driver = await new Builder()
+      .forBrowser('chrome')
+      .setChromeOptions(options)
+      .build();
+    
     // Login to the portal
     const loginSuccess = await login(driver);
     if (!loginSuccess) {
@@ -293,7 +306,76 @@ async function bookSlot(booking) {
   }
 }
 
+// Main function to process bookings
+async function processBookings() {
+  try {
+    // Load bookings from file or create an empty array if running in GitHub Actions
+    const bookingsPath = path.join(__dirname, 'bookings.json');
+    let bookings = [];
+    
+    if (fs.existsSync(bookingsPath)) {
+      const bookingsData = fs.readFileSync(bookingsPath, 'utf8');
+      bookings = JSON.parse(bookingsData);
+    } else if (process.env.GITHUB_ACTIONS) {
+      // Create a sample booking for GitHub Actions if no bookings file exists
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      
+      const formattedDate = tomorrow.toISOString().split('T')[0]; // YYYY-MM-DD format
+      
+      bookings = [
+        {
+          id: 'github-actions-1',
+          facility: 'gym-evening',
+          date: formattedDate,
+          time: '18:00', // 6:00 PM
+          status: 'pending'
+        }
+      ];
+      
+      // Save the sample booking to file
+      fs.writeFileSync(bookingsPath, JSON.stringify(bookings, null, 2));
+      console.log(`Created sample booking for ${formattedDate} at 6:00 PM`);
+    }
+    
+    // Process each booking
+    for (const booking of bookings) {
+      console.log(`Processing booking ${booking.id}...`);
+      
+      // Book the slot
+      const bookingSuccess = await bookSlot(booking);
+      if (!bookingSuccess) {
+        console.error(`Error booking slot ${booking.id}`);
+      } else {
+        console.log(`Booking ${booking.id} successful!`);
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error processing bookings:', error);
+    return false;
+  }
+}
+
 // Export functions
 module.exports = {
-  bookSlot
+  bookSlot,
+  processBookings
 };
+
+// Run the script if it's called directly
+if (require.main === module) {
+  (async () => {
+    console.log('Starting automated booking process...');
+    const success = await processBookings();
+    
+    if (success) {
+      console.log('Booking process completed successfully!');
+      process.exit(0);
+    } else {
+      console.error('Booking process failed!');
+      process.exit(1);
+    }
+  })();
+}
