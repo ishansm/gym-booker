@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FLAME University Slot Booker</title>
+  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="8" x2="12" y2="12"></line>
+          <line x1="12" y1="16" x2="12.01" y2="16"></line>
+        </svg>
+        <span>FLAME University Slot Booking System</span>
+      </div>
+      <h1>Book Your Slots</h1>
+      <p class="subtitle">Automatic slot booking system for gym and swimming pool facilities</p>
+    </header>
+
+    <div class="tabs">
+      <button class="tab active" data-tab="single">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+          <line x1="16" y1="2" x2="16" y2="6"></line>
+          <line x1="8" y1="2" x2="8" y2="6"></line>
+          <line x1="3" y1="10" x2="21" y2="10"></line>
+        </svg>
+        Single Booking
+      </button>
+      <button class="tab" data-tab="bulk">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+          <circle cx="9" cy="7" r="4"></circle>
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+          <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+        </svg>
+        Bulk Booking
+      </button>
+    </div>
+
+    <div class="tab-content active" id="single-tab">
+      <div class="card">
+        <div class="card-header">
+          <h2>Book a Single Slot</h2>
+          <p>Schedule a one-time slot for facility access</p>
+        </div>
+        <div class="card-content">
+          <form id="single-booking-form">
+            <div class="form-group">
+              <label>Select Facility</label>
+              <div class="facility-toggle">
+                <button type="button" class="facility-btn active" data-facility="gym-evening">Gym (3:00 PM - 10:00 PM)</button>
+                <button type="button" class="facility-btn" data-facility="gym-morning">Gym (6:30 AM - 2:30 PM)</button>
+                <button type="button" class="facility-btn" data-facility="swimming">Swimming Pool</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Select Date</label>
+              <input type="date" id="booking-date" required>
+            </div>
+
+            <div class="form-group">
+              <label>Select Time Slot</label>
+              <div class="time-slots" id="time-slots">
+                <div class="time-slot-message">Please select a facility and date first</div>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" id="book-btn">Book Slot</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="bulk-tab">
+      <div class="card">
+        <div class="card-header">
+          <h2>Bulk Booking</h2>
+          <p>Schedule multiple slots at once</p>
+        </div>
+        <div class="card-content">
+          <form id="bulk-booking-form">
+            <div class="form-group">
+              <label>Select Facility</label>
+              <div class="facility-toggle">
+                <button type="button" class="facility-btn active" data-facility="gym-evening">Gym (3:00 PM - 10:00 PM)</button>
+                <button type="button" class="facility-btn" data-facility="gym-morning">Gym (6:30 AM - 2:30 PM)</button>
+                <button type="button" class="facility-btn" data-facility="swimming">Swimming Pool</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Select Time Slot</label>
+              <select id="bulk-time-slot" required>
+                <option value="">Select a time slot</option>
+                <!-- Time slots will be populated by JavaScript -->
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label>Select Days</label>
+              <div class="weekday-toggle">
+                <button type="button" class="weekday-btn" data-day="0">Sunday</button>
+                <button type="button" class="weekday-btn" data-day="1">Monday</button>
+                <button type="button" class="weekday-btn" data-day="2">Tuesday</button>
+                <button type="button" class="weekday-btn" data-day="3">Wednesday</button>
+                <button type="button" class="weekday-btn" data-day="4">Thursday</button>
+                <button type="button" class="weekday-btn" data-day="5">Friday</button>
+                <button type="button" class="weekday-btn" data-day="6">Saturday</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label><strong>Date Range</strong></label>
+              <div class="date-range">
+                <div>
+                  <label for="start-date">Start Date</label>
+                  <input type="date" id="start-date" required>
+                </div>
+                <div>
+                  <label for="end-date">End Date</label>
+                  <input type="date" id="end-date" required>
+                </div>
+              </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Schedule Bulk Bookings</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" id="upcoming-bookings">
+      <div class="card-header">
+        <h2>Upcoming Bookings</h2>
+        <p>Your scheduled slot bookings</p>
+      </div>
+      <div class="card-content">
+        <div id="bookings-list">
+          <p class="empty-state">No bookings scheduled yet</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="notification" id="notification">
+      <div class="notification-content">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="notification-icon">
+          <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+          <polyline points="22 4 12 14.01 9 11.01"></polyline>
+        </svg>
+        <span id="notification-message"></span>
+      </div>
+      <button class="notification-close" id="notification-close">×</button>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
