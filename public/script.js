@@ -166,22 +166,35 @@ function updateTimeSlots(facility) {
   });
 }
 
-// Update bulk booking time slots dropdown
+// Update bulk booking time slots
 function updateBulkTimeSlots(facility) {
-  const bulkTimeSlot = document.getElementById('bulk-time-slot');
+  const bulkTimeSlotsContainer = document.getElementById('bulk-time-slots');
   
-  // Clear existing options
-  bulkTimeSlot.innerHTML = '<option value="">Select a time slot</option>';
+  // Clear existing time slots
+  bulkTimeSlotsContainer.innerHTML = '';
   
   // Get time slots for selected facility
   const slots = TIME_SLOTS[facility];
   
-  // Create options
+  // Create time slot buttons
   slots.forEach(slot => {
-    const option = document.createElement('option');
-    option.value = slot.time;
-    option.textContent = slot.label;
-    bulkTimeSlot.appendChild(option);
+    const timeSlot = document.createElement('button');
+    timeSlot.type = 'button';
+    timeSlot.className = 'time-slot';
+    timeSlot.dataset.time = slot.time;
+    timeSlot.textContent = slot.label;
+    
+    timeSlot.addEventListener('click', () => {
+      // Remove active class from all time slots
+      bulkTimeSlotsContainer.querySelectorAll('.time-slot').forEach(ts => {
+        ts.classList.remove('active');
+      });
+      
+      // Add active class to clicked time slot
+      timeSlot.classList.add('active');
+    });
+    
+    bulkTimeSlotsContainer.appendChild(timeSlot);
   });
 }
 
@@ -229,14 +242,16 @@ function handleBulkBooking(event) {
   // Get form values
   const facilityBtn = document.querySelector('#bulk-booking-form .facility-btn.active');
   const facility = facilityBtn.dataset.facility;
-  const time = document.getElementById('bulk-time-slot').value;
+  const timeSlot = document.querySelector('#bulk-time-slots .time-slot.active');
   const startDate = document.getElementById('start-date').value;
   const endDate = document.getElementById('end-date').value;
   
-  if (!time) {
+  if (!timeSlot) {
     showNotification('Please select a time slot', 'error');
     return;
   }
+  
+  const time = timeSlot.dataset.time;
   
   if (!startDate || !endDate) {
     showNotification('Please select start and end dates', 'error');
@@ -278,11 +293,13 @@ function handleBulkBooking(event) {
   showNotification(`${newBookings.length} slots booked for ${FACILITY_NAMES[facility]}`, 'success');
   
   // Reset form
-  document.getElementById('bulk-time-slot').value = '';
   document.getElementById('start-date').value = '';
   document.getElementById('end-date').value = '';
   document.querySelectorAll('.weekday-btn').forEach(btn => {
     btn.classList.remove('active');
+  });
+  document.querySelectorAll('#bulk-time-slots .time-slot').forEach(ts => {
+    ts.classList.remove('active');
   });
 }
 
