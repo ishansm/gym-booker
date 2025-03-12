@@ -176,6 +176,11 @@ function updateBulkTimeSlots(facility) {
   // Get time slots for selected facility
   const slots = TIME_SLOTS[facility];
   
+  if (!slots || slots.length === 0) {
+    bulkTimeSlotsContainer.innerHTML = '<div class="time-slot-message">No time slots available for this facility</div>';
+    return;
+  }
+  
   // Create time slot buttons
   slots.forEach(slot => {
     const timeSlot = document.createElement('button');
@@ -185,7 +190,7 @@ function updateBulkTimeSlots(facility) {
     timeSlot.textContent = slot.label;
     
     timeSlot.addEventListener('click', () => {
-      // Remove active class from all time slots
+      // Remove active class from all time slots in this container
       bulkTimeSlotsContainer.querySelectorAll('.time-slot').forEach(ts => {
         ts.classList.remove('active');
       });
