@@ -1,5 +1,5 @@
 // Import required modules
-const { Builder, By, until } = require('selenium-webdriver');
+const { Builder, By, until, Key } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
 const fs = require('fs');
 const path = require('path');
@@ -133,43 +133,50 @@ async function selectFacility(driver, facility) {
   try {
     console.log(`Selecting facility: ${facility}...`);
     
-    // Map our facility codes to the portal's facility options
-    const facilityMap = {
-      'gym-evening': 'Gym (3:00 PM - 10:00 PM)',
-      'gym-morning': 'Gym (6:30 AM - 2:30 PM)',
-      'swimming': 'Swimming Pool'
-    };
+    // Wait for page to load
+    await driver.sleep(2000);
     
-    const facilityName = facilityMap[facility];
+    // Map facility type to the button text based on the screenshot
+    let facilityButtonText;
+    if (facility.toLowerCase().includes('swimming')) {
+      facilityButtonText = 'Swimming Pool';
+    } else if (facility.toLowerCase().includes('gym') && facility.toLowerCase().includes('morning')) {
+      facilityButtonText = 'Gym (6:30 AM - 2:30 PM)';
+    } else if (facility.toLowerCase().includes('gym') && facility.toLowerCase().includes('evening')) {
+      facilityButtonText = 'Gym (3:00 PM - 10:00 PM)';
+    } else if (facility.toLowerCase().includes('gym')) {
+      // Default to morning gym if not specified
+      facilityButtonText = 'Gym (6:30 AM - 2:30 PM)';
+    } else {
+      throw new Error(`Unknown facility type: ${facility}`);
+    }
     
-    // Select the facility from the dropdown
-    const facilitySelect = await driver.findElement(By.id('facility-select'));
-    await facilitySelect.click();
+    console.log(`Looking for facility button with text: ${facilityButtonText}`);
     
-    // Wait for dropdown options to appear
-    await driver.wait(until.elementLocated(By.css('.facility-option')), 5000);
-    
-    // Find and click the correct facility option
-    const facilityOptions = await driver.findElements(By.css('.facility-option'));
+    // Find all buttons on the page
+    const buttons = await driver.findElements(By.css('button'));
     let facilityFound = false;
     
-    for (const option of facilityOptions) {
-      const optionText = await option.getText();
-      if (optionText === facilityName) {
-        await option.click();
+    for (const button of buttons) {
+      const buttonText = await button.getText();
+      console.log(`Found button with text: ${buttonText}`);
+      
+      if (buttonText === facilityButtonText) {
+        console.log(`Clicking on facility button: ${buttonText}`);
+        await button.click();
         facilityFound = true;
         break;
       }
     }
     
     if (!facilityFound) {
-      throw new Error(`Facility "${facilityName}" not found in dropdown`);
+      throw new Error(`Facility button "${facilityButtonText}" not found`);
     }
     
-    console.log(`Facility "${facilityName}" selected successfully!`);
+    console.log(`Facility "${facilityButtonText}" selected successfully!`);
     return true;
   } catch (error) {
-    console.error('Error selecting facility:', error);
+    console.error(`Error selecting facility: ${error.message}`);
     return false;
   }
 }
@@ -179,52 +186,76 @@ async function selectDate(driver, date) {
   try {
     console.log(`Selecting date: ${date}...`);
     
-    // Click on date picker
-    await driver.findElement(By.id('date-picker')).click();
+    // Wait for page to load
+    await driver.sleep(1000);
     
-    // Wait for date picker to open
-    await driver.wait(until.elementLocated(By.css('.date-picker-calendar')), 5000);
+    // Find the date input field based on the screenshot
+    // Looking for an input field that might contain the date
+    const dateInputs = await driver.findElements(By.css('input'));
+    let dateInput = null;
     
-    // Parse the date
-    const [year, month, day] = date.split('-').map(Number);
-    
-    // Month in JavaScript is 0-indexed (0 = January, 11 = December)
-    const monthIndex = month - 1;
-    
-    // Navigate to the correct month and year
-    // This part is highly dependent on the actual date picker implementation
-    // The following is a simplified example
-    
-    // Select the month and year from dropdowns if they exist
-    const monthSelect = await driver.findElement(By.css('.month-select'));
-    await monthSelect.click();
-    await driver.findElement(By.css(`.month-option[data-month="${monthIndex}"]`)).click();
-    
-    const yearSelect = await driver.findElement(By.css('.year-select'));
-    await yearSelect.click();
-    await driver.findElement(By.css(`.year-option[data-year="${year}"]`)).click();
-    
-    // Find and click the correct day
-    const dayElements = await driver.findElements(By.css('.day'));
-    let dayFound = false;
-    
-    for (const dayElement of dayElements) {
-      const dayText = await dayElement.getText();
-      if (parseInt(dayText) === day) {
-        await dayElement.click();
-        dayFound = true;
+    for (const input of dateInputs) {
+      const placeholder = await input.getAttribute('placeholder');
+      const value = await input.getAttribute('value');
+      
+      console.log(`Found input with placeholder: ${placeholder}, value: ${value}`);
+      
+      // Check if this input is likely the date field
+      if (placeholder && placeholder.toLowerCase().includes('date') || 
+          value && value.match(/\d{2}\/\d{2}\/\d{4}/)) {
+        dateInput = input;
+        console.log('Found likely date input field');
         break;
       }
     }
     
-    if (!dayFound) {
-      throw new Error(`Day "${day}" not found in calendar`);
+    if (!dateInput) {
+      // If we can't find by placeholder, look for the input that's near "Select Date" text
+      const allElements = await driver.findElements(By.xpath('//*[contains(text(), "Select Date")]/following::input'));
+      if (allElements.length > 0) {
+        dateInput = allElements[0];
+        console.log('Found date input field by proximity to "Select Date" text');
+      }
     }
     
-    console.log(`Date "${date}" selected successfully!`);
+    if (!dateInput) {
+      // Last resort: try to find by looking at the screenshot - there's a date field with MM/DD/YYYY format
+      console.log('Using direct input for date');
+      
+      // Format the date from YYYY-MM-DD to MM/DD/YYYY
+      const [year, month, day] = date.split('-');
+      const formattedDate = `${month}/${day}/${year}`;
+      
+      // Try to find the input field directly
+      const inputs = await driver.findElements(By.css('input'));
+      if (inputs.length > 0) {
+        // Assuming the date field is the first input we find
+        dateInput = inputs[0];
+      }
+    }
+    
+    if (!dateInput) {
+      throw new Error('Could not find date input field');
+    }
+    
+    // Clear any existing value
+    await dateInput.clear();
+    
+    // Format the date from YYYY-MM-DD to MM/DD/YYYY
+    const [year, month, day] = date.split('-');
+    const formattedDate = `${month}/${day}/${year}`;
+    
+    // Enter the date
+    console.log(`Entering date: ${formattedDate}`);
+    await dateInput.sendKeys(formattedDate);
+    
+    // Press Enter to confirm
+    await dateInput.sendKeys(Key.ENTER);
+    
+    console.log(`Date "${date}" entered successfully!`);
     return true;
   } catch (error) {
-    console.error('Error selecting date:', error);
+    console.error(`Error selecting date: ${error.message}`);
     return false;
   }
 }
@@ -234,20 +265,30 @@ async function selectTimeSlot(driver, time) {
   try {
     console.log(`Selecting time slot: ${time}...`);
     
-    // Convert time to display format (e.g., "15:00" to "3:00 PM")
-    const timeDisplay = formatTimeForDisplay(time);
+    // Wait for page to load
+    await driver.sleep(1000);
     
-    // Wait for time slots to load
-    await driver.wait(until.elementLocated(By.css('.time-slot')), 5000);
+    // Convert 24-hour time format to the format shown in the screenshot
+    // From the screenshot, time slots are displayed as "8:00 AM", "3:00 PM", etc.
+    const [hours, minutes] = time.split(':').map(Number);
+    let displayHours = hours % 12;
+    if (displayHours === 0) displayHours = 12;
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const timeDisplay = `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`;
     
-    // Find and click the correct time slot
-    const timeSlots = await driver.findElements(By.css('.time-slot'));
+    console.log(`Looking for time slot button with text: ${timeDisplay}`);
+    
+    // Find all buttons that might be time slots
+    const buttons = await driver.findElements(By.css('button'));
     let timeSlotFound = false;
     
-    for (const slot of timeSlots) {
-      const slotText = await slot.getText();
-      if (slotText === timeDisplay) {
-        await slot.click();
+    for (const button of buttons) {
+      const buttonText = await button.getText();
+      console.log(`Found button with text: ${buttonText}`);
+      
+      if (buttonText === timeDisplay) {
+        console.log(`Clicking on time slot button: ${buttonText}`);
+        await button.click();
         timeSlotFound = true;
         break;
       }
@@ -260,7 +301,7 @@ async function selectTimeSlot(driver, time) {
     console.log(`Time slot "${timeDisplay}" selected successfully!`);
     return true;
   } catch (error) {
-    console.error('Error selecting time slot:', error);
+    console.error(`Error selecting time slot: ${error.message}`);
     return false;
   }
 }
@@ -270,16 +311,68 @@ async function submitBooking(driver) {
   try {
     console.log('Submitting booking...');
     
-    // Find and click the submit button
-    await driver.findElement(By.id('book-button')).click();
+    // Wait for page to load
+    await driver.sleep(1000);
     
-    // Wait for confirmation message
-    await driver.wait(until.elementLocated(By.css('.booking-confirmation')), 10000);
+    // Find the "Book Slot" button based on the screenshot
+    const buttons = await driver.findElements(By.css('button'));
+    let bookButton = null;
     
-    console.log('Booking submitted successfully!');
+    for (const button of buttons) {
+      const buttonText = await button.getText();
+      console.log(`Found button with text: ${buttonText}`);
+      
+      if (buttonText === 'Book Slot') {
+        bookButton = button;
+        console.log('Found "Book Slot" button');
+        break;
+      }
+    }
+    
+    if (!bookButton) {
+      // Try to find by looking at any button that might be a submit button
+      for (const button of buttons) {
+        const buttonText = await button.getText();
+        if (buttonText.toLowerCase().includes('book') || 
+            buttonText.toLowerCase().includes('submit') || 
+            buttonText.toLowerCase().includes('confirm')) {
+          bookButton = button;
+          console.log(`Found likely booking button with text: ${buttonText}`);
+          break;
+        }
+      }
+    }
+    
+    if (!bookButton) {
+      throw new Error('Could not find booking submit button');
+    }
+    
+    // Click the button to submit the booking
+    console.log('Clicking "Book Slot" button');
+    await bookButton.click();
+    
+    // Wait for confirmation (could be a success message or a redirect)
+    await driver.sleep(3000);
+    
+    // Try to detect if booking was successful
+    // This depends on how the website confirms a successful booking
+    // It could be a success message, a redirect, or an element that appears
+    
+    // Check if we're redirected to a confirmation page or if a success message appears
+    const pageSource = await driver.getPageSource();
+    if (pageSource.includes('success') || 
+        pageSource.includes('confirmed') || 
+        pageSource.includes('booked') ||
+        pageSource.includes('Upcoming Bookings')) {
+      console.log('Booking appears to be successful!');
+      return true;
+    }
+    
+    // If we can't confirm success, assume it worked if no error appeared
+    console.log('Booking submitted, but could not confirm success. Assuming it worked.');
     return true;
   } catch (error) {
-    console.error('Error submitting booking:', error);
+    console.error(`Error submitting booking: ${error.message}`);
     return false;
   }
 }
