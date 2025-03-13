@@ -15,98 +15,162 @@ const BOOKING_URL = 'https://my.flame.edu.in/s/book-slot';
 // Function to login to the portal
 async function login(driver) {
   try {
+    console.log('Logging in...');
+    console.log(`Using username: ${process.env.USERNAME.substring(0, 3)}...`);
+    
+    // Navigate to login page
     console.log('Navigating to login page...');
     await driver.get(LOGIN_URL);
     
-    console.log('Waiting for page to load completely...');
-    await driver.sleep(5000); // Give the page some time to fully load
+    // Wait for page to load
+    await driver.sleep(2000);
     
-    // Find all input fields
-    console.log('Finding all input fields on the page...');
-    const inputFields = await driver.findElements(By.css('input'));
-    console.log(`Found ${inputFields.length} input fields`);
-    
-    if (inputFields.length < 2) {
-      throw new Error('Could not find enough input fields for login form');
-    }
-    
-    // Find username and password fields
+    // Try to find username and password fields using different strategies
     let usernameField = null;
     let passwordField = null;
     
-    for (let i = 0; i < inputFields.length; i++) {
-      const type = await inputFields[i].getAttribute('type');
-      console.log(`Input field ${i+1} type: ${type}`);
-      
-      if (type === 'text' || type === 'email') {
-        usernameField = inputFields[i];
-        console.log(`Found username field at position ${i+1}`);
-      } else if (type === 'password') {
-        passwordField = inputFields[i];
-        console.log(`Found password field at position ${i+1}`);
+    try {
+      // First attempt: by ID
+      usernameField = await driver.findElement(By.id('username'));
+      passwordField = await driver.findElement(By.id('password'));
+      console.log('Found login fields by ID');
+    } catch (error) {
+      console.log('Could not find login fields by ID, trying by name...');
+      try {
+        // Second attempt: by name
+        usernameField = await driver.findElement(By.name('username'));
+        passwordField = await driver.findElement(By.name('password'));
+        console.log('Found login fields by name');
+      } catch (error) {
+        console.log('Could not find login fields by name, trying by type...');
+        // Third attempt: by input type
+        const inputs = await driver.findElements(By.css('input'));
+        for (const input of inputs) {
+          const type = await input.getAttribute('type');
+          const placeholder = await input.getAttribute('placeholder');
+          
+          if (type === 'email' || type === 'text' || 
+              (placeholder && (placeholder.toLowerCase().includes('email') || 
+                              placeholder.toLowerCase().includes('username')))) {
+            usernameField = input;
+            console.log('Found likely username field');
+          } else if (type === 'password') {
+            passwordField = input;
+            console.log('Found likely password field');
+          }
+        }
       }
     }
     
-    if (!usernameField) {
-      throw new Error('Could not find the username field');
+    if (!usernameField || !passwordField) {
+      throw new Error('Could not locate username or password fields');
     }
     
-    if (!passwordField) {
-      throw new Error('Could not find the password field');
-    }
+    // Clear any existing values
+    await usernameField.clear();
+    await passwordField.clear();
     
-    console.log('Entering email...');
+    // Enter credentials
+    console.log('Entering username...');
     await usernameField.sendKeys(process.env.USERNAME);
-    
     console.log('Entering password...');
     await passwordField.sendKeys(process.env.PASSWORD);
     
-    console.log('Looking for submit button...');
-    // Try different ways to find the submit button
-    const buttons = await driver.findElements(By.css('button, input[type="submit"]'));
-    console.log(`Found ${buttons.length} buttons/submit inputs`);
+    // Find and click login button
+    console.log('Looking for login button...');
+    let loginButton = null;
     
-    let submitButton = null;
-    
-    // Try to find the submit button by text content or type
-    for (let i = 0; i < buttons.length; i++) {
-      const tagName = await buttons[i].getTagName();
-      const type = tagName === 'button' ? await buttons[i].getAttribute('type') : null;
-      const text = await buttons[i].getText();
-      console.log(`Button ${i+1}: Tag=${tagName}, Type=${type}, Text="${text}"`);
+    try {
+      // First attempt: by ID
+      loginButton = await driver.findElement(By.id('login-button'));
+      console.log('Found login button by ID');
+    } catch (error) {
+      console.log('Could not find login button by ID, trying by text...');
+      // Second attempt: by button text
+      const buttons = await driver.findElements(By.css('button'));
+      for (const button of buttons) {
+        const buttonText = await button.getText();
+        if (buttonText.toLowerCase().includes('login') || 
+            buttonText.toLowerCase().includes('sign in')) {
+          loginButton = button;
+          console.log(`Found likely login button with text: ${buttonText}`);
+          break;
+        }
+      }
       
-      // Check if it's a submit button or has login-related text
-      if (type === 'submit' || 
-          text.toLowerCase().includes('log') || 
-          text.toLowerCase().includes('sign') || 
-          text.toLowerCase().includes('enter')) {
-        submitButton = buttons[i];
-        console.log(`Found likely submit button at position ${i+1}`);
-        break;
+      if (!loginButton) {
+        // Third attempt: by input type submit
+        const inputs = await driver.findElements(By.css('input[type="submit"]'));
+        if (inputs.length > 0) {
+          loginButton = inputs[0];
+          console.log('Found submit input, using as login button');
+        }
       }
     }
     
-    // If we couldn't find a likely submit button, just use the first button
-    if (!submitButton && buttons.length > 0) {
-      submitButton = buttons[0];
-      console.log('Using first button as submit button');
+    if (!loginButton) {
+      throw new Error('Could not locate login button');
     }
     
-    if (!submitButton) {
-      throw new Error('Could not find a submit button');
+    // Click login button
+    console.log('Clicking login button...');
+    await loginButton.click();
+    
+    // Wait for login to complete (either by URL change or by finding elements on dashboard)
+    console.log('Waiting for login to complete...');
+    try {
+      // Wait for URL to change
+      await driver.wait(until.urlContains('dashboard'), 5000);
+      console.log('Login successful! URL changed to dashboard.');
+    } catch (error) {
+      console.log('URL did not change to dashboard, checking for dashboard elements...');
+      
+      // If URL doesn't change, look for elements that would indicate successful login
+      try {
+        await driver.wait(until.elementLocated(By.css('.dashboard-element, .user-profile, .logged-in')), 5000);
+        console.log('Login successful! Found dashboard elements.');
+      } catch (error) {
+        // Check if there's an error message
+        try {
+          const pageSource = await driver.getPageSource();
+          if (pageSource.toLowerCase().includes('incorrect') || 
+              pageSource.toLowerCase().includes('invalid') || 
+              pageSource.toLowerCase().includes('failed')) {
+            throw new Error('Login failed: Invalid credentials');
+          }
+        } catch (innerError) {
+          console.error('Error checking for login failure messages:', innerError);
+        }
+        
+        throw new Error('Login may have failed: Could not confirm successful login');
+      }
     }
     
-    console.log('Clicking submit button...');
-    await submitButton.click();
+    // Take a screenshot after login for debugging
+    try {
+      await driver.takeScreenshot().then(function(data) {
+        require('fs').writeFileSync('login-result.png', data, 'base64');
+        console.log('Screenshot saved to login-result.png');
+      });
+    } catch (screenshotError) {
+      console.log('Could not take screenshot:', screenshotError.message);
+    }
     
-    // Wait for successful login with longer timeout
-    console.log('Waiting for redirect after login...');
-    await driver.wait(until.urlContains('my.flame.edu.in/s/'), 20000);
-    
-    console.log('Login successful!');
+    console.log('Login process completed successfully!');
     return true;
   } catch (error) {
-    console.error('Error during login:', error);
+    console.error(`Error during login: ${error.message}`);
+    
+    // Take a screenshot on error for debugging
+    try {
+      await driver.takeScreenshot().then(function(data) {
+        require('fs').writeFileSync('login-error.png', data, 'base64');
+        console.log('Error screenshot saved to login-error.png');
+      });
+    } catch (screenshotError) {
+      console.log('Could not take error screenshot:', screenshotError.message);
+    }
+    
     return false;
   }
 }
