@@ -49,13 +49,13 @@ async function login(driver) {
     console.log('Entering password...');
     await passwordField.sendKeys(process.env.PASSWORD);
     
-    // Find the "Log In" button
-    console.log('Looking for "Log In" button...');
-    const loginButton = await driver.findElement(By.xpath('//button[text()="Log In"]'));
-    console.log('Found "Log In" button');
+    // Find the "Log in" button
+    console.log('Looking for "Log in" button...');
+    const loginButton = await driver.findElement(By.xpath('//button[text()="Log in"]'));
+    console.log('Found "Log in" button');
     
     // Click the login button
-    console.log('Clicking "Log In" button...');
+    console.log('Clicking "Log in" button...');
     await loginButton.click();
     
     // Wait for login to complete
