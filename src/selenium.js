@@ -465,43 +465,35 @@ function formatTimeForDisplay(time) {
 }
 
 // Function to check if it's time to book a slot
-function isTimeToBook(booking, bookingDate, bookingTime) {
-  // Parse the booking date and time
-  const [year, month, day] = bookingDate.split('-').map(Number);
-  const [hours, minutes] = bookingTime.split(':').map(Number);
-  
-  // Create Date objects for the booking time and current time
-  const bookingDateTime = new Date(year, month - 1, day, hours, minutes);
+function isTimeToBook(booking) {
+  const { date, time, immediate } = booking;
   const currentTime = new Date();
+  const slotOpeningTime = getSlotOpeningTime(date);
   
-  // Create a date object for exactly 24 hours before the booking time
-  // This is when the slot becomes available for booking
-  const slotOpeningTime = new Date(bookingDateTime);
-  slotOpeningTime.setHours(slotOpeningTime.getHours() - 24);
+  const hoursUntilBooking = (new Date(date + 'T' + time + ':00Z') - currentTime) / (1000 * 60 * 60);
+  const hoursPassedSinceOpening = (currentTime - slotOpeningTime) / (1000 * 60 * 60);
   
-  // Calculate time differences in milliseconds
-  const timeUntilBooking = bookingDateTime.getTime() - currentTime.getTime();
-  const timePassedSinceOpening = currentTime.getTime() - slotOpeningTime.getTime();
-  
-  // Convert to hours
-  const hoursUntilBooking = timeUntilBooking / (1000 * 60 * 60);
-  const hoursPassedSinceOpening = timePassedSinceOpening / (1000 * 60 * 60);
-  
-  console.log(`Booking: ${bookingDate} ${bookingTime}`);
+  // Debug logging
+  console.log(`Booking: ${date} ${time}`);
   console.log(`Current time: ${currentTime.toISOString()}`);
   console.log(`Slot opening time: ${slotOpeningTime.toISOString()}`);
   console.log(`Hours until booking: ${hoursUntilBooking.toFixed(2)}`);
   console.log(`Hours passed since opening: ${hoursPassedSinceOpening.toFixed(2)}`);
   
-  // Check if:
-  // 1. The slot has opened (current time is after the slot opening time)
-  // 2. The booking time is still in the future
-  // 3. Either:
-  //    a. We're within the first hour after the slot opened (normal case)
-  //    b. This is a newly added booking for a slot that's already open
-  return timePassedSinceOpening >= 0 && // Slot has opened
-         hoursUntilBooking > 0 && // Booking is in the future
+  return hoursUntilBooking > 0 && // Booking time hasn't passed
+         hoursPassedSinceOpening > 0 && // Slot is open for booking
          (hoursPassedSinceOpening <= 1 || booking.immediate); // Either within first hour OR marked for immediate booking
+}
+
+// Function to calculate when a slot opens for booking (12:30 PM the day before)
+function getSlotOpeningTime(date) {
+  // Parse the date string (YYYY-MM-DD)
+  const [year, month, day] = date.split('-').map(num => parseInt(num, 10));
+  
+  // Create a date object for the day before at 12:30 PM
+  const openingTime = new Date(year, month - 1, day - 1, 12, 30, 0);
+  
+  return openingTime;
 }
 
 // Function to book a slot
@@ -823,7 +815,7 @@ async function processBookings() {
       }
       
       // Check if it's time to book this slot (24 hours before)
-      if (isTimeToBook(booking, booking.date, booking.time)) {
+      if (isTimeToBook(booking)) {
         console.log(`It's time to book slot ${booking.id} for ${booking.date} at ${booking.time}`);
         
         try {
