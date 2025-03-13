@@ -49,13 +49,78 @@ async function login(driver) {
     console.log('Entering password...');
     await passwordField.sendKeys(process.env.PASSWORD);
     
-    // Find the "Log in" button
-    console.log('Looking for "Log in" button...');
-    const loginButton = await driver.findElement(By.xpath('//button[text()="Log in"]'));
-    console.log('Found "Log in" button');
+    // Try multiple strategies to find the login button
+    console.log('Looking for login button...');
+    let loginButton = null;
+    
+    try {
+      // First attempt: by exact text "Log in"
+      loginButton = await driver.findElement(By.xpath('//button[text()="Log in"]'));
+      console.log('Found login button by exact text "Log in"');
+    } catch (error) {
+      console.log('Could not find button with exact text "Log in", trying case-insensitive...');
+      try {
+        // Second attempt: by case-insensitive text contains
+        loginButton = await driver.findElement(By.xpath('//button[contains(translate(text(), "LOGIN", "login"), "log in")]'));
+        console.log('Found login button by case-insensitive text');
+      } catch (error) {
+        console.log('Could not find button by text, trying by CSS class...');
+        try {
+          // Third attempt: by CSS classes commonly used for login buttons
+          loginButton = await driver.findElement(By.css('button.login-button, button.btn-login, button.submit-button'));
+          console.log('Found login button by CSS class');
+        } catch (error) {
+          console.log('Could not find button by CSS class, trying any button on the form...');
+          try {
+            // Fourth attempt: find any button within the form
+            const buttons = await driver.findElements(By.css('form button'));
+            if (buttons.length > 0) {
+              loginButton = buttons[0]; // Use the first button found in the form
+              console.log('Found a button within the form, using as login button');
+            } else {
+              // Fifth attempt: just find any button on the page
+              const allButtons = await driver.findElements(By.css('button'));
+              if (allButtons.length > 0) {
+                // Try to find a button that looks like a login button based on text content
+                for (const button of allButtons) {
+                  const buttonText = await button.getText();
+                  const buttonTextLower = buttonText.toLowerCase();
+                  if (buttonTextLower.includes('log') || 
+                      buttonTextLower.includes('sign') || 
+                      buttonTextLower.includes('submit') || 
+                      buttonTextLower.includes('enter')) {
+                    loginButton = button;
+                    console.log(`Found likely login button with text: ${buttonText}`);
+                    break;
+                  }
+                }
+                
+                // If no button with login-like text was found, just use the first button
+                if (!loginButton) {
+                  loginButton = allButtons[0];
+                  console.log('Using first button on page as login button');
+                }
+              } else {
+                throw new Error('No buttons found on the page');
+              }
+            }
+          } catch (error) {
+            console.log('Could not find any buttons, trying input type submit...');
+            // Sixth attempt: look for input type="submit"
+            const submitInputs = await driver.findElements(By.css('input[type="submit"]'));
+            if (submitInputs.length > 0) {
+              loginButton = submitInputs[0];
+              console.log('Found submit input, using as login button');
+            } else {
+              throw new Error('Could not locate any login button or submit element');
+            }
+          }
+        }
+      }
+    }
     
     // Click the login button
-    console.log('Clicking "Log in" button...');
+    console.log('Clicking login button...');
     await loginButton.click();
     
     // Wait for login to complete
@@ -439,13 +504,237 @@ function isTimeToBook(booking, bookingDate, bookingTime) {
          (hoursPassedSinceOpening <= 1 || booking.immediate); // Either within first hour OR marked for immediate booking
 }
 
-// Main function to book a slot
-async function bookSlot(booking) {
-  let driver;
-  
+// Function to book a slot
+async function bookSlot(driver, facility, date, time) {
   try {
-    console.log(`Starting booking process for ${booking.facility} on ${booking.date} at ${booking.time}...`);
+    console.log(`Starting booking process for ${facility} on ${date} at ${time}...`);
     
+    // Login to the portal
+    const loginSuccess = await login(driver);
+    if (!loginSuccess) {
+      throw new Error('Login failed');
+    }
+    
+    // Navigate to booking page
+    console.log('Navigating to booking page...');
+    await driver.get('https://my.flame.edu.in/s/book-slot');
+    await driver.sleep(3000);
+    
+    // Step 1: Select "Sports Facilities" on the first screen
+    console.log('Selecting "Sports Facilities"...');
+    try {
+      const sportsFacilitiesButton = await driver.findElement(By.xpath('//button[contains(text(), "Sports Facilities")]'));
+      await sportsFacilitiesButton.click();
+      console.log('Clicked on "Sports Facilities"');
+    } catch (error) {
+      console.error('Error selecting Sports Facilities:', error.message);
+      throw new Error('Could not select Sports Facilities');
+    }
+    
+    await driver.sleep(2000);
+    
+    // Step 2: Select the specific facility based on the booking
+    console.log(`Selecting facility: ${facility}...`);
+    let facilitySelector;
+    
+    // Map the facility from our JSON to the button text on the website
+    if (facility === 'swimming') {
+      facilitySelector = 'Swimming Pool';
+    } else if (facility === 'gym-morning') {
+      facilitySelector = 'Gym ( 6:30 am to 2:30 pm slot )';
+    } else if (facility === 'gym-evening') {
+      facilitySelector = 'Gym ( 3:00 pm to 10:00 pm slot )';
+    } else {
+      facilitySelector = facility; // Use as-is if no mapping needed
+    }
+    
+    try {
+      const facilityButton = await driver.findElement(By.xpath(`//button[contains(text(), "${facilitySelector}")]`));
+      await facilityButton.click();
+      console.log(`Clicked on "${facilitySelector}"`);
+    } catch (error) {
+      console.error(`Error selecting facility ${facilitySelector}:`, error.message);
+      
+      // Try a more flexible approach if exact match fails
+      console.log('Trying to find facility button with partial text match...');
+      try {
+        const buttons = await driver.findElements(By.css('button'));
+        let found = false;
+        
+        for (const button of buttons) {
+          const buttonText = await button.getText();
+          if (buttonText.toLowerCase().includes(facilitySelector.toLowerCase())) {
+            await button.click();
+            console.log(`Clicked on button with text: ${buttonText}`);
+            found = true;
+            break;
+          }
+        }
+        
+        if (!found) {
+          throw new Error(`Could not find any button matching "${facilitySelector}"`);
+        }
+      } catch (innerError) {
+        console.error('Error with fallback facility selection:', innerError.message);
+        throw new Error(`Could not select facility: ${facilitySelector}`);
+      }
+    }
+    
+    await driver.sleep(2000);
+    
+    // Step 3: Select date
+    console.log(`Selecting date: ${date}...`);
+    
+    // Convert date from YYYY-MM-DD to DD/MM/YYYY format
+    const [year, month, day] = date.split('-');
+    const formattedDate = `${day}/${month}/${year}`;
+    
+    try {
+      const dateInput = await driver.findElement(By.css('input[type="text"]'));
+      await dateInput.clear();
+      await dateInput.sendKeys(formattedDate);
+      console.log(`Entered date: ${formattedDate}`);
+    } catch (error) {
+      console.error('Error entering date:', error.message);
+      throw new Error('Could not enter date');
+    }
+    
+    await driver.sleep(1000);
+    
+    // Step 4: Select time slot
+    console.log(`Selecting time slot for: ${time}...`);
+    
+    // Map the time from our JSON to the time range on the website
+    let timeRange;
+    const hour = parseInt(time.split(':')[0]);
+    
+    if (hour >= 3 && hour < 4) {
+      timeRange = '3:00 PM-4:00 PM';
+    } else if (hour >= 4 && hour < 5) {
+      timeRange = '4:00 PM-5:00 PM';
+    } else if (hour >= 5 && hour < 6) {
+      timeRange = '5:00 PM-6:00 PM';
+    } else if (hour >= 6 && hour < 7) {
+      timeRange = '6:00 PM-7:00 PM';
+    } else if (hour >= 7 && hour < 8) {
+      timeRange = '7:00 PM-8:00 PM';
+    } else if (hour >= 8 && hour < 9) {
+      timeRange = '8:00 AM-9:00 AM';
+    } else if (hour >= 9 && hour < 10) {
+      timeRange = '9:00 AM-10:00 AM';
+    } else if (hour >= 10 && hour < 11) {
+      timeRange = '10:00 AM-11:00 AM';
+    } else if (hour >= 11 && hour < 12) {
+      timeRange = '11:00 AM-12:00 PM';
+    } else if (hour >= 12 && hour < 13) {
+      timeRange = '12:00 PM-1:00 PM';
+    } else if (hour >= 13 && hour < 14) {
+      timeRange = '1:00 PM-2:00 PM';
+    } else if (hour >= 14 && hour < 15) {
+      timeRange = '2:00 PM-3:00 PM';
+    } else {
+      timeRange = `${hour}:00`; // Fallback
+    }
+    
+    try {
+      const timeButton = await driver.findElement(By.xpath(`//button[contains(text(), "${timeRange}")]`));
+      await timeButton.click();
+      console.log(`Clicked on time slot: ${timeRange}`);
+    } catch (error) {
+      console.error(`Error selecting time slot ${timeRange}:`, error.message);
+      
+      // Try a more flexible approach if exact match fails
+      console.log('Trying to find time slot button with partial text match...');
+      try {
+        const buttons = await driver.findElements(By.css('button'));
+        let found = false;
+        
+        for (const button of buttons) {
+          const buttonText = await button.getText();
+          // Convert hour to 12-hour format for matching
+          const hour12 = hour > 12 ? hour - 12 : hour;
+          const ampm = hour >= 12 ? 'PM' : 'AM';
+          const hourPattern = `${hour12}:00`;
+          
+          if (buttonText.includes(hourPattern) && buttonText.includes(ampm)) {
+            await button.click();
+            console.log(`Clicked on button with text: ${buttonText}`);
+            found = true;
+            break;
+          }
+        }
+        
+        if (!found) {
+          throw new Error(`Could not find any button matching time for ${hour}:00`);
+        }
+      } catch (innerError) {
+        console.error('Error with fallback time selection:', innerError.message);
+        throw new Error(`Could not select time slot for ${hour}:00`);
+      }
+    }
+    
+    await driver.sleep(1000);
+    
+    // Step 5: Click the "Book" button to confirm
+    console.log('Clicking "Book" button to confirm...');
+    try {
+      const bookButton = await driver.findElement(By.xpath('//button[text()="Book"]'));
+      await bookButton.click();
+      console.log('Clicked on "Book" button');
+    } catch (error) {
+      console.error('Error clicking Book button:', error.message);
+      throw new Error('Could not click Book button');
+    }
+    
+    await driver.sleep(3000);
+    
+    // Check for success (could be a confirmation message or redirect)
+    console.log('Checking for booking confirmation...');
+    try {
+      // Take a screenshot for verification
+      await driver.takeScreenshot().then(function(data) {
+        require('fs').writeFileSync('booking-confirmation.png', data, 'base64');
+        console.log('Confirmation screenshot saved to booking-confirmation.png');
+      });
+      
+      // Check for success elements or messages
+      try {
+        const confirmationElement = await driver.findElement(By.xpath('//*[contains(text(), "success") or contains(text(), "confirmed") or contains(text(), "booked")]'));
+        console.log('Found confirmation message:', await confirmationElement.getText());
+      } catch (error) {
+        console.log('No explicit confirmation message found, but no errors either');
+      }
+      
+      console.log('Booking process completed successfully');
+      return true;
+    } catch (error) {
+      console.error('Error during booking confirmation check:', error.message);
+      throw new Error('Could not confirm booking success');
+    }
+  } catch (error) {
+    console.error(`Error booking slot: ${error.message}`);
+    
+    // Take a screenshot on error for debugging
+    try {
+      await driver.takeScreenshot().then(function(data) {
+        require('fs').writeFileSync('booking-error.png', data, 'base64');
+        console.log('Error screenshot saved to booking-error.png');
+      });
+    } catch (screenshotError) {
+      console.log('Could not take error screenshot:', screenshotError.message);
+    }
+    
+    throw error;
+  }
+}
+
+// Main function to process bookings
+async function processBookings() {
+  console.log('Processing bookings...');
+  
+  // Initialize driver for booking
+  let driver;
+  try {
     // Configure Chrome options for headless operation
     const options = new chrome.Options();
     
@@ -463,58 +752,7 @@ async function bookSlot(booking) {
       .forBrowser('chrome')
       .setChromeOptions(options)
       .build();
-    
-    // Login to the portal
-    const loginSuccess = await login(driver);
-    if (!loginSuccess) {
-      throw new Error('Login failed');
-    }
-    
-    // Navigate to booking page
-    const navigationSuccess = await navigateToBookingPage(driver);
-    if (!navigationSuccess) {
-      throw new Error('Navigation to booking page failed');
-    }
-    
-    // Select facility
-    const facilitySuccess = await selectFacility(driver, booking.facility);
-    if (!facilitySuccess) {
-      throw new Error('Facility selection failed');
-    }
-    
-    // Select date
-    const dateSuccess = await selectDate(driver, booking.date);
-    if (!dateSuccess) {
-      throw new Error('Date selection failed');
-    }
-    
-    // Select time slot
-    const timeSlotSuccess = await selectTimeSlot(driver, booking.time);
-    if (!timeSlotSuccess) {
-      throw new Error('Time slot selection failed');
-    }
-    
-    // Submit booking
-    const submissionSuccess = await submitBooking(driver);
-    if (!submissionSuccess) {
-      throw new Error('Booking submission failed');
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Error booking slot:', error);
-    return false;
-  } finally {
-    // Close the browser
-    await driver.quit();
-  }
-}
-
-// Main function to process bookings
-async function processBookings() {
-  try {
-    console.log('Processing bookings...');
-    
+  
     // Load bookings from file or create an empty array if running in GitHub Actions
     const bookingsPath = path.join(__dirname, 'bookings.json');
     let bookings = [];
@@ -567,13 +805,20 @@ async function processBookings() {
       if (booking.immediate) {
         console.log(`Processing immediate booking request ${booking.id} for ${booking.date} at ${booking.time}`);
         
-        // Book the slot
-        const success = await bookSlot(booking);
-        
-        // Update booking status and remove immediate flag
-        booking.status = success ? 'completed' : 'failed';
-        booking.immediate = false;
-        processedBookings.push(booking);
+        try {
+          // Book the slot
+          const success = await bookSlot(driver, booking.facility, booking.date, booking.time);
+          
+          // Update booking status and remove immediate flag
+          booking.status = success ? 'completed' : 'failed';
+          booking.immediate = false;
+          processedBookings.push(booking);
+        } catch (error) {
+          console.error(`Error booking slot ${booking.id}:`, error.message);
+          booking.status = 'failed';
+          booking.immediate = false;
+          processedBookings.push(booking);
+        }
         continue;
       }
       
@@ -581,18 +826,44 @@ async function processBookings() {
       if (isTimeToBook(booking, booking.date, booking.time)) {
         console.log(`It's time to book slot ${booking.id} for ${booking.date} at ${booking.time}`);
         
-        // Book the slot
-        const success = await bookSlot(booking);
-        
-        // Update booking status
-        booking.status = success ? 'completed' : 'failed';
-        processedBookings.push(booking);
+        try {
+          // Book the slot
+          const success = await bookSlot(driver, booking.facility, booking.date, booking.time);
+          
+          // Update booking status
+          booking.status = success ? 'completed' : 'failed';
+          processedBookings.push(booking);
+        } catch (error) {
+          console.error(`Error booking slot ${booking.id}:`, error.message);
+          booking.status = 'failed';
+          processedBookings.push(booking);
+        }
       } else {
-        console.log(`Not yet time to book slot ${booking.id} for ${booking.date} at ${booking.time}`);
+        // Log why we're not booking yet
+        const { date, time } = booking;
+        const currentTime = new Date();
+        const slotOpeningTime = getSlotOpeningTime(date);
+        
+        const hoursUntilBooking = (new Date(date + 'T' + time + ':00Z') - currentTime) / (1000 * 60 * 60);
+        const hoursPassedSinceOpening = (currentTime - slotOpeningTime) / (1000 * 60 * 60);
+        
+        console.log(`Booking: ${date} ${time}`);
+        console.log(`Current time: ${currentTime.toISOString()}`);
+        console.log(`Slot opening time: ${slotOpeningTime.toISOString()}`);
+        console.log(`Hours until booking: ${hoursUntilBooking.toFixed(2)}`);
+        console.log(`Hours passed since opening: ${hoursPassedSinceOpening.toFixed(2)}`);
+        
+        if (hoursUntilBooking < 0) {
+          console.log(`Booking time has passed for ${booking.id}`);
+        } else if (hoursPassedSinceOpening < 0) {
+          console.log(`Not yet time to book slot ${booking.id} for ${date} at ${time}`);
+        } else if (hoursPassedSinceOpening > 1 && !booking.immediate) {
+          console.log(`More than 1 hour has passed since slot opening for ${booking.id}`);
+        }
       }
     }
     
-    // Save processed bookings back to file
+    // Save updated bookings back to file if any changes were made
     if (processedBookings.length > 0) {
       const updatedBookings = bookings.map((booking) => {
         const processedBooking = processedBookings.find((processed) => processed.id === booking.id);
@@ -602,11 +873,18 @@ async function processBookings() {
       fs.writeFileSync(bookingsPath, JSON.stringify(updatedBookings, null, 2));
       console.log('Updated bookings file');
     }
-    
-    return true;
   } catch (error) {
-    console.error('Error processing bookings:', error);
-    return false;
+    console.error('Error processing bookings:', error.message);
+  } finally {
+    // Close the browser
+    if (driver) {
+      try {
+        await driver.quit();
+        console.log('Browser closed');
+      } catch (error) {
+        console.error('Error closing browser:', error.message);
+      }
+    }
   }
 }
 
