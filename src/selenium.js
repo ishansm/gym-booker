@@ -315,15 +315,32 @@ function isTimeToBook(bookingDate, bookingTime) {
   const bookingDateTime = new Date(year, month - 1, day, hours, minutes);
   const currentTime = new Date();
   
-  // Calculate the time difference in milliseconds
-  const timeDiff = bookingDateTime.getTime() - currentTime.getTime();
+  // Create a date object for exactly 24 hours before the booking time
+  // This is when the slot becomes available for booking
+  const slotOpeningTime = new Date(bookingDateTime);
+  slotOpeningTime.setHours(slotOpeningTime.getHours() - 24);
+  
+  // Calculate time differences in milliseconds
+  const timeUntilBooking = bookingDateTime.getTime() - currentTime.getTime();
+  const timePassedSinceOpening = currentTime.getTime() - slotOpeningTime.getTime();
   
   // Convert to hours
-  const hoursDiff = timeDiff / (1000 * 60 * 60);
+  const hoursUntilBooking = timeUntilBooking / (1000 * 60 * 60);
+  const hoursPassedSinceOpening = timePassedSinceOpening / (1000 * 60 * 60);
   
-  // Check if we're within the 23 hours and 59 minutes window (23.98 hours)
-  // and the booking is in the future
-  return hoursDiff > 0 && hoursDiff <= 23.98;
+  console.log(`Booking: ${bookingDate} ${bookingTime}`);
+  console.log(`Current time: ${currentTime.toISOString()}`);
+  console.log(`Slot opening time: ${slotOpeningTime.toISOString()}`);
+  console.log(`Hours until booking: ${hoursUntilBooking.toFixed(2)}`);
+  console.log(`Hours passed since opening: ${hoursPassedSinceOpening.toFixed(2)}`);
+  
+  // Check if:
+  // 1. The slot has opened (current time is after the slot opening time)
+  // 2. The booking time is still in the future
+  // 3. We haven't already tried to book this slot (within a small buffer to avoid repeated attempts)
+  return timePassedSinceOpening >= 0 && // Slot has opened
+         hoursUntilBooking > 0 && // Booking is in the future
+         hoursPassedSinceOpening <= 1; // Only try to book within the first hour after opening
 }
 
 // Main function to book a slot
@@ -440,7 +457,7 @@ async function processBookings() {
         continue;
       }
       
-      // Check if it's time to book this slot (23 hours and 59 minutes before)
+      // Check if it's time to book this slot (24 hours before)
       if (isTimeToBook(booking.date, booking.time)) {
         console.log(`It's time to book slot ${booking.id} for ${booking.date} at ${booking.time}`);
         
