@@ -1,1 +1,26 @@
-[]
+[
+  {
+    "id": "booking-1",
+    "facility": "gym-evening",
+    "date": "2025-03-14",
+    "time": "18:00",
+    "status": "pending",
+    "description": "Evening gym session"
+  },
+  {
+    "id": "booking-2",
+    "facility": "gym-morning",
+    "date": "2025-03-15",
+    "time": "08:00",
+    "status": "pending",
+    "description": "Morning gym workout"
+  },
+  {
+    "id": "booking-3",
+    "facility": "swimming",
+    "date": "2025-03-16",
+    "time": "16:00",
+    "status": "pending",
+    "description": "Weekend swim"
+  }
+]

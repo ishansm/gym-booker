@@ -235,6 +235,27 @@ function formatTimeForDisplay(time) {
   return `${displayHours}:${minutes.toString().padStart(2, '0')} ${period}`;
 }
 
+// Function to check if it's time to book a slot
+function isTimeToBook(bookingDate, bookingTime) {
+  // Parse the booking date and time
+  const [year, month, day] = bookingDate.split('-').map(Number);
+  const [hours, minutes] = bookingTime.split(':').map(Number);
+  
+  // Create Date objects for the booking time and current time
+  const bookingDateTime = new Date(year, month - 1, day, hours, minutes);
+  const currentTime = new Date();
+  
+  // Calculate the time difference in milliseconds
+  const timeDiff = bookingDateTime.getTime() - currentTime.getTime();
+  
+  // Convert to hours
+  const hoursDiff = timeDiff / (1000 * 60 * 60);
+  
+  // Check if we're within the 23 hours and 59 minutes window (23.98 hours)
+  // and the booking is in the future
+  return hoursDiff > 0 && hoursDiff <= 23.98;
+}
+
 // Main function to book a slot
 async function bookSlot(booking) {
   let driver;
@@ -338,17 +359,49 @@ async function processBookings() {
       console.log(`Created sample booking for ${formattedDate} at 6:00 PM`);
     }
     
+    // Keep track of bookings that were processed
+    const processedBookings = [];
+    
     // Process each booking
     for (const booking of bookings) {
-      console.log(`Processing booking ${booking.id}...`);
-      
-      // Book the slot
-      const bookingSuccess = await bookSlot(booking);
-      if (!bookingSuccess) {
-        console.error(`Error booking slot ${booking.id}`);
-      } else {
-        console.log(`Booking ${booking.id} successful!`);
+      // Skip bookings that are already completed or failed
+      if (booking.status === 'completed' || booking.status === 'failed') {
+        console.log(`Skipping booking ${booking.id} with status ${booking.status}`);
+        continue;
       }
+      
+      // Check if it's time to book this slot (23 hours and 59 minutes before)
+      if (isTimeToBook(booking.date, booking.time)) {
+        console.log(`It's time to book slot ${booking.id} for ${booking.date} at ${booking.time}`);
+        
+        // Book the slot
+        const bookingSuccess = await bookSlot(booking);
+        
+        // Update booking status
+        if (bookingSuccess) {
+          booking.status = 'completed';
+          console.log(`Booking ${booking.id} successful!`);
+        } else {
+          booking.status = 'failed';
+          console.error(`Error booking slot ${booking.id}`);
+        }
+        
+        // Add to processed bookings
+        processedBookings.push(booking);
+      } else {
+        console.log(`Not yet time to book slot ${booking.id} for ${booking.date} at ${booking.time}`);
+      }
+    }
+    
+    // Save processed bookings back to file
+    if (processedBookings.length > 0) {
+      const updatedBookings = bookings.map((booking) => {
+        const processedBooking = processedBookings.find((processed) => processed.id === booking.id);
+        return processedBooking || booking;
+      });
+      
+      fs.writeFileSync(bookingsPath, JSON.stringify(updatedBookings, null, 2));
+      console.log('Updated bookings file');
     }
     
     return true;
