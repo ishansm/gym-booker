@@ -306,7 +306,7 @@ function formatTimeForDisplay(time) {
 }
 
 // Function to check if it's time to book a slot
-function isTimeToBook(bookingDate, bookingTime) {
+function isTimeToBook(booking, bookingDate, bookingTime) {
   // Parse the booking date and time
   const [year, month, day] = bookingDate.split('-').map(Number);
   const [hours, minutes] = bookingTime.split(':').map(Number);
@@ -337,10 +337,12 @@ function isTimeToBook(bookingDate, bookingTime) {
   // Check if:
   // 1. The slot has opened (current time is after the slot opening time)
   // 2. The booking time is still in the future
-  // 3. We haven't already tried to book this slot (within a small buffer to avoid repeated attempts)
+  // 3. Either:
+  //    a. We're within the first hour after the slot opened (normal case)
+  //    b. This is a newly added booking for a slot that's already open
   return timePassedSinceOpening >= 0 && // Slot has opened
          hoursUntilBooking > 0 && // Booking is in the future
-         hoursPassedSinceOpening <= 1; // Only try to book within the first hour after opening
+         (hoursPassedSinceOpening <= 1 || booking.immediate); // Either within first hour OR marked for immediate booking
 }
 
 // Main function to book a slot
@@ -417,6 +419,8 @@ async function bookSlot(booking) {
 // Main function to process bookings
 async function processBookings() {
   try {
+    console.log('Processing bookings...');
+    
     // Load bookings from file or create an empty array if running in GitHub Actions
     const bookingsPath = path.join(__dirname, 'bookings.json');
     let bookings = [];
@@ -449,31 +453,45 @@ async function processBookings() {
     // Keep track of bookings that were processed
     const processedBookings = [];
     
+    // Check for any immediate booking requests
+    const hasImmediateBookings = bookings.some(booking => 
+      booking.status === 'pending' && booking.immediate === true);
+    
+    if (hasImmediateBookings) {
+      console.log('Found immediate booking requests! Processing them now...');
+    }
+    
     // Process each booking
     for (const booking of bookings) {
-      // Skip bookings that are already completed or failed
+      // Skip completed or failed bookings
       if (booking.status === 'completed' || booking.status === 'failed') {
-        console.log(`Skipping booking ${booking.id} with status ${booking.status}`);
+        console.log(`Skipping ${booking.id} (${booking.status})`);
+        continue;
+      }
+      
+      // Check if this is an immediate booking request
+      if (booking.immediate) {
+        console.log(`Processing immediate booking request ${booking.id} for ${booking.date} at ${booking.time}`);
+        
+        // Book the slot
+        const success = await bookSlot(booking);
+        
+        // Update booking status and remove immediate flag
+        booking.status = success ? 'completed' : 'failed';
+        booking.immediate = false;
+        processedBookings.push(booking);
         continue;
       }
       
       // Check if it's time to book this slot (24 hours before)
-      if (isTimeToBook(booking.date, booking.time)) {
+      if (isTimeToBook(booking, booking.date, booking.time)) {
         console.log(`It's time to book slot ${booking.id} for ${booking.date} at ${booking.time}`);
         
         // Book the slot
-        const bookingSuccess = await bookSlot(booking);
+        const success = await bookSlot(booking);
         
         // Update booking status
-        if (bookingSuccess) {
-          booking.status = 'completed';
-          console.log(`Booking ${booking.id} successful!`);
-        } else {
-          booking.status = 'failed';
-          console.error(`Error booking slot ${booking.id}`);
-        }
-        
-        // Add to processed bookings
+        booking.status = success ? 'completed' : 'failed';
         processedBookings.push(booking);
       } else {
         console.log(`Not yet time to book slot ${booking.id} for ${booking.date} at ${booking.time}`);
@@ -498,24 +516,15 @@ async function processBookings() {
   }
 }
 
-// Export functions
+// Run the main function
+processBookings();
+
+// Run the main function if this script is executed directly
+if (require.main === module) {
+  processBookings();
+}
+
+// Export functions for use in other scripts
 module.exports = {
-  bookSlot,
   processBookings
 };
-
-// Run the script if it's called directly
-if (require.main === module) {
-  (async () => {
-    console.log('Starting automated booking process...');
-    const success = await processBookings();
-    
-    if (success) {
-      console.log('Booking process completed successfully!');
-      process.exit(0);
-    } else {
-      console.error('Booking process failed!');
-      process.exit(1);
-    }
-  })();
-}
