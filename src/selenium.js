@@ -18,20 +18,90 @@ async function login(driver) {
     console.log('Navigating to login page...');
     await driver.get(LOGIN_URL);
     
-    // Wait for the login form to load
-    await driver.wait(until.elementLocated(By.id('username')), 10000);
+    console.log('Waiting for page to load completely...');
+    await driver.sleep(5000); // Give the page some time to fully load
     
-    console.log('Entering username...');
-    await driver.findElement(By.id('username')).sendKeys(process.env.USERNAME);
+    // Find all input fields
+    console.log('Finding all input fields on the page...');
+    const inputFields = await driver.findElements(By.css('input'));
+    console.log(`Found ${inputFields.length} input fields`);
+    
+    if (inputFields.length < 2) {
+      throw new Error('Could not find enough input fields for login form');
+    }
+    
+    // Find username and password fields
+    let usernameField = null;
+    let passwordField = null;
+    
+    for (let i = 0; i < inputFields.length; i++) {
+      const type = await inputFields[i].getAttribute('type');
+      console.log(`Input field ${i+1} type: ${type}`);
+      
+      if (type === 'text' || type === 'email') {
+        usernameField = inputFields[i];
+        console.log(`Found username field at position ${i+1}`);
+      } else if (type === 'password') {
+        passwordField = inputFields[i];
+        console.log(`Found password field at position ${i+1}`);
+      }
+    }
+    
+    if (!usernameField) {
+      throw new Error('Could not find the username field');
+    }
+    
+    if (!passwordField) {
+      throw new Error('Could not find the password field');
+    }
+    
+    console.log('Entering email...');
+    await usernameField.sendKeys(process.env.USERNAME);
     
     console.log('Entering password...');
-    await driver.findElement(By.id('password')).sendKeys(process.env.PASSWORD);
+    await passwordField.sendKeys(process.env.PASSWORD);
     
-    console.log('Submitting login form...');
-    await driver.findElement(By.name('login')).click();
+    console.log('Looking for submit button...');
+    // Try different ways to find the submit button
+    const buttons = await driver.findElements(By.css('button, input[type="submit"]'));
+    console.log(`Found ${buttons.length} buttons/submit inputs`);
     
-    // Wait for successful login
-    await driver.wait(until.urlContains('my.flame.edu.in/s/'), 10000);
+    let submitButton = null;
+    
+    // Try to find the submit button by text content or type
+    for (let i = 0; i < buttons.length; i++) {
+      const tagName = await buttons[i].getTagName();
+      const type = tagName === 'button' ? await buttons[i].getAttribute('type') : null;
+      const text = await buttons[i].getText();
+      console.log(`Button ${i+1}: Tag=${tagName}, Type=${type}, Text="${text}"`);
+      
+      // Check if it's a submit button or has login-related text
+      if (type === 'submit' || 
+          text.toLowerCase().includes('log') || 
+          text.toLowerCase().includes('sign') || 
+          text.toLowerCase().includes('enter')) {
+        submitButton = buttons[i];
+        console.log(`Found likely submit button at position ${i+1}`);
+        break;
+      }
+    }
+    
+    // If we couldn't find a likely submit button, just use the first button
+    if (!submitButton && buttons.length > 0) {
+      submitButton = buttons[0];
+      console.log('Using first button as submit button');
+    }
+    
+    if (!submitButton) {
+      throw new Error('Could not find a submit button');
+    }
+    
+    console.log('Clicking submit button...');
+    await submitButton.click();
+    
+    // Wait for successful login with longer timeout
+    console.log('Waiting for redirect after login...');
+    await driver.wait(until.urlContains('my.flame.edu.in/s/'), 20000);
     
     console.log('Login successful!');
     return true;
